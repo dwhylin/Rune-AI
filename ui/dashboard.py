@@ -94,11 +94,6 @@ class SearchBar(QWidget):
 
     # Signal to emit when search is completed
     search_completed = Signal(str, dict)
-    """A search input field paired with a search button.
-
-    Provides a text box where users can type queries and a styled
-    "Search" button to trigger the action (functionality added later).
-    """
 
     def __init__(self, placeholder: str = "", parent=None):
         super().__init__(parent)
@@ -146,8 +141,9 @@ class SearchBar(QWidget):
             locations = extract_loc_lines(wikitext)
             drops = get_parsed_drops(wikitext)
             
-            # Add drops to monster data
+            # Add drops and locations to monster data
             monster_data["drops"] = drops
+            monster_data["locations"] = locations
             
             # Emit signal with parsed data (to be handled by the parent)
             self.search_completed.emit(query, monster_data)
@@ -220,7 +216,50 @@ class Dashboard(QWidget):
         self.search_bar = SearchBar("Search monsters, items, locations...")
         main_layout.addWidget(self.search_bar)
 
-        # --- Results display area ---
+        # --- Monster info display area (above buttons) ---
+        self.monster_info_container = QWidget()
+        self.monster_info_layout = QVBoxLayout(self.monster_info_container)
+        self.monster_info_layout.setContentsMargins(0, 0, 0, 0)
+        self.monster_info_layout.setSpacing(8)
+        
+        # Monster name label
+        self.monster_name_label = QLabel()
+        self.monster_name_label.setStyleSheet("""
+            color: #c9a227;
+            font-size: 24px;
+            font-weight: bold;
+            background-color: transparent;
+        """)
+        self.monster_info_layout.addWidget(self.monster_name_label)
+        
+        # Monster info labels
+        self.combat_level_label = QLabel()
+        self.hitpoints_label = QLabel()
+        self.attack_style_label = QLabel()
+        self.slayer_xp_label = QLabel()
+        self.attributes_label = QLabel()
+        
+        self.monster_info_layout.addWidget(self.combat_level_label)
+        self.monster_info_layout.addWidget(self.hitpoints_label)
+        self.monster_info_layout.addWidget(self.attack_style_label)
+        self.monster_info_layout.addWidget(self.slayer_xp_label)
+        self.monster_info_layout.addWidget(self.attributes_label)
+        
+        # Buttons
+        self.button_layout = QHBoxLayout()
+        self.drops_button = QPushButton("Drops")
+        self.drops_button.setObjectName("drops_button")
+        self.locations_button = QPushButton("Locations")
+        self.locations_button.setObjectName("locations_button")
+        
+        self.button_layout.addWidget(self.drops_button)
+        self.button_layout.addWidget(self.locations_button)
+        
+        self.monster_info_layout.addLayout(self.button_layout)
+        
+        main_layout.addWidget(self.monster_info_container)
+
+        # --- Results display area (scrollable content) ---
         self.results_container = QWidget()
         results_layout = QHBoxLayout(self.results_container)
         results_layout.setContentsMargins(0, 0, 0, 0)
@@ -312,105 +351,71 @@ class Dashboard(QWidget):
         self.text_display.show()
         self.image_container.show()
         
-        # Format the monster data for display
-        formatted_result = self._format_monster_data(query, monster_data)
-        self.text_display.setPlainText(formatted_result)
+        # Display monster info above buttons
+        self._display_monster_info(query, monster_data)
         
-    def _format_monster_data(self, query, monster_data):
-        """Format monster data for display in GUI."""
-        result = []
-        result.append(f"Monster: {query}")
-        result.append("")
+        # Initially hide the scrollable content
+        self.text_display.hide()
         
-        # Add basic monster info if available
-        if "combat_level" in monster_data:
-            result.append(f"Combat Level: {monster_data['combat_level']}")
-        if "hitpoints" in monster_data:
-            result.append(f"Hitpoints: {monster_data['hitpoints']}")
-        if "attack_style" in monster_data:
-            result.append(f"Attack Style: {monster_data['attack_style']}")
-        if "max_hit" in monster_data:
-            result.append(f"Max Hit: {monster_data['max_hit']}")
-        if "attributes" in monster_data:
-            # Handle attributes as comma-separated string instead of character-by-character
-            if isinstance(monster_data['attributes'], list):
-                result.append(f"Attributes: {', '.join(monster_data['attributes'])}")
-            else:
-                # If it's a comma-separated string, split and capitalize each word
-                if isinstance(monster_data['attributes'], str):
-                    attributes_list = [attr.strip().capitalize() for attr in monster_data['attributes'].split(',')]
-                    result.append(f"Attributes: {', '.join(attributes_list)}")
-                else:
-                    result.append(f"Attributes: {monster_data['attributes']}")
-        if "slayer_xp" in monster_data:
-            result.append(f"Slayer XP: {monster_data['slayer_xp']}")
-        if "weakness" in monster_data:
-            # Handle weakness as comma-separated string
-            if isinstance(monster_data['weakness'], list):
-                result.append(f"Weakness: {', '.join(monster_data['weakness'])}")
-            else:
-                result.append(f"Weakness: {monster_data['weakness']}")
-        if "immunities" in monster_data:
-            # Handle immunities as comma-separated string
-            if isinstance(monster_data['immunities'], list):
-                result.append(f"Immunities: {', '.join(monster_data['immunities'])}")
-            else:
-                result.append(f"Immunities: {monster_data['immunities']}")
+        # Connect button signals
+        self.drops_button.clicked.connect(lambda: self._show_drops_content(monster_data))
+        self.locations_button.clicked.connect(lambda: self._show_location_content(monster_data))
         
-        # Add locations
-        if "locations" in monster_data:
-            result.append("")
-            result.append("Locations:")
-            for loc in monster_data["locations"]:
-                result.append(f"  {loc}")
+    def _display_monster_info(self, query, monster_data):
+        """Display monster information above the buttons."""
+        self.monster_name_label.setText(monster_data.get("name", query))
+
+        combat_level = monster_data.get("combat1") or monster_data.get("combat") or "N/A"
+        self.combat_level_label.setText(f"Combat Level: {combat_level}")
+
+        hitpoints = monster_data.get("hitpoints1") or monster_data.get("hitpoints") or "N/A"
+        self.hitpoints_label.setText(f"Hitpoints: {hitpoints}")
+
+        attack_style = monster_data.get("attack style", "N/A")
+        self.attack_style_label.setText(f"Attack Style: {attack_style}")
+
+        slayer_xp = monster_data.get("slayxp1") or monster_data.get("slayxp") or "N/A"
+        self.slayer_xp_label.setText(f"Slayer XP: {slayer_xp}")
+
+        attributes = monster_data.get("attributes", "N/A")
+        if isinstance(attributes, str):
+            attributes = ", ".join(attr.strip().capitalize() for attr in attributes.split(","))
+        self.attributes_label.setText(f"Attributes: {attributes}")
         
-        # Add drops
-        if "drops" in monster_data and monster_data["drops"]:
-            result.append("")
-            result.append("Drops:")
-            
-            # Group drops by category
-            categories = {}
-            for drop in monster_data["drops"]:
-                category = drop.get("category", "Unknown")
-                if category not in categories:
-                    categories[category] = []
-                categories[category].append(drop)
-            
-            # Sort and display categories
-            sorted_categories = sorted(categories.keys())
-            for category in sorted_categories:
-                drops_in_category = categories[category]
-                
-                # Add category header
-                result.append(f"  {category}")
-                
-                # Group by rarity for better formatting
-                rarity_groups = {}
-                for drop in drops_in_category:
-                    rarity = drop.get("rarity", "N/A")
-                    if rarity not in rarity_groups:
-                        rarity_groups[rarity] = []
-                    rarity_groups[rarity].append(drop)
-                
-                # Display each drop with proper formatting
-                for rarity, drops in rarity_groups.items():
-                    # Special handling for Brimstone key - show as 1/50
-                    if any("Brimstone" in drop.get("name", "") or "brimstone" in drop.get("name", "").lower() for drop in drops):
-                        rarity = "1/50"
-                    
-                    # Display all drops with this rarity
-                    for drop in drops:
-                        name = drop.get("name", "N/A")
-                        quantity = drop.get("quantity", "N/A")
-                        
-                        # Handle Brimstone key specifically
-                        if "Brimstone" in name or "brimstone" in name.lower():
-                            rarity = "1/50"
-                        
-                        result.append(f"    {name} - {quantity} - {rarity}")
+    def _show_drops_content(self, monster_data):
+        """Display drops grouped by category."""
+        drops = monster_data.get("drops", [])
+        if not drops:
+            self.text_display.setText("No drops information available.")
+            self.text_display.show()
+            return
+        groups = {}
+        for drop in drops:
+            category = drop.get("category", "Uncategorized")
+            groups.setdefault(category, []).append(drop)
+        lines = ["DROPS", ""]
+        for category, items in groups.items():
+            lines.append(category.upper())
+            for drop in items:
+                name = drop.get("name", "Unknown")
+                quantity = drop.get("quantity", "N/A")
+                rarity = drop.get("rarity", "N/A")
+                lines.append(f"  {name}    x{quantity}    {rarity}")
+            lines.append("")
+        self.text_display.setPlainText("\n".join(lines))
+        self.text_display.show()
+
+    def _show_location_content(self, monster_data):
+        """Display locations content in the scrollable area."""
+        locations = monster_data.get("locations", [])
+        if not locations:
+            content = "No location information available."
+        else:
+            content = "\n".join([f"- {location}" for location in locations])
         
-        return "\n".join(result)
+        self.text_display.setText(content)
+        self.text_display.show()        
+
         
     def show_monsters_view(self):
         """Show the monster search interface."""
@@ -418,5 +423,3 @@ class Dashboard(QWidget):
         self.search_bar.show()
         self.text_display.show()
         self.image_container.show()
-
-
