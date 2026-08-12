@@ -107,12 +107,24 @@ def extract_loc_lines(wikitext):
                 location = re.sub(r'\[\[(?:[^\]|]*\|)?([^\]]*)\]\]', r'\1', location)
                 # Remove wiki template syntax like {{Fairycode}}
                 location = re.sub(r'\{\{[^}]*\}\}', '', location)
+                # Clean up any remaining parentheses that might contain template-like content
+                location = re.sub(r'\s*\([^)]*\)', '', location)
                 # Clean up trailing parentheses and any leftover template-like content
                 location = re.sub(r'\s*\([^)]*\)$', '', location)
                 # Remove any remaining brackets or artifacts
                 location = re.sub(r'[\[\]]', '', location)
                 # Strip leading/trailing whitespace
                 location = location.strip()
+                # Final cleanup: remove any remaining template-like content at the end
+                location = re.sub(r'\{\{[^}]*$', '', location)
+                # Remove any trailing parentheses that might contain template-like content
+                location = re.sub(r'\s*\([^)]*\{\{[^}]*\}\)', '', location)
+                # Remove any remaining trailing parentheses with content
+                location = re.sub(r'\s*\([^)]*\)$', '', location)
+                # Clean up any remaining artifacts like ' (' at the end
+                location = re.sub(r'\s+\(.*$', '', location)
+                # Additional cleanup for edge cases with template content - ensure all remaining template fragments are removed
+                location = re.sub(r'\{\{[^}]*\}\}?', '', location)
                 if location:  # Only add non-empty locations
                     loc_lines.append(location)
     
