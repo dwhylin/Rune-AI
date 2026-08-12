@@ -23,10 +23,7 @@ class Sidebar(QFrame):
 
     # Menu items displayed in the sidebar (icon placeholder + label)
     _MENU_ITEMS = [
-        ("⚔", "Home"),
         ("👹", "Monsters"),
-        ("⚙️", "Gear"),
-        ("💎", "Drops"),
         ("🗺️", "Travel"),
         ("📖", "Wiki"),
     ]

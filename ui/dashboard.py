@@ -199,14 +199,6 @@ class Dashboard(QWidget):
     into a cohesive dashboard layout that fills available space.
     """
 
-    # Feature cards displayed in the dashboard grid
-    _CARDS = [
-        ("Monsters", "Search OSRS monsters and combat information.", "👹"),
-        ("Gear", "Find the best equipment for your target.", "⚙️"),
-        ("Drops", "Explore monster drop tables.", "💎"),
-        ("Travel", "Find the best ways to reach destinations.", "🗺️"),
-    ]
-
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -229,10 +221,16 @@ class Dashboard(QWidget):
         main_layout.addWidget(self.search_bar)
 
         # --- Results display area ---
-        self.results_display = QTextEdit()
-        self.results_display.setReadOnly(True)
-        self.results_display.setObjectName("results_display")
-        self.results_display.setStyleSheet("""
+        self.results_container = QWidget()
+        results_layout = QHBoxLayout(self.results_container)
+        results_layout.setContentsMargins(0, 0, 0, 0)
+        results_layout.setSpacing(16)
+
+        # Left column for monster text info
+        self.text_display = QTextEdit()
+        self.text_display.setReadOnly(True)
+        self.text_display.setObjectName("results_display")
+        self.text_display.setStyleSheet("""
             QTextEdit#results_display {
                 background-color: #1e1e2e;
                 border: 1px solid #313244;
@@ -242,17 +240,52 @@ class Dashboard(QWidget):
                 font-size: 13px;
             }
         """)
-        self.results_display.hide()  # Initially hidden
-        main_layout.addWidget(self.results_display)
+        self.text_display.hide()  # Initially hidden
+        results_layout.addWidget(self.text_display, stretch=1)
+
+        # Right column for image placeholders
+        self.image_container = QWidget()
+        image_layout = QVBoxLayout(self.image_container)
+        image_layout.setContentsMargins(0, 0, 0, 0)
+        image_layout.setSpacing(16)
+
+        # Monster image placeholder (square, larger than map)
+        self.monster_image_placeholder = QLabel("[ MONSTER IMAGE PLACEHOLDER ]")
+        self.monster_image_placeholder.setStyleSheet("""
+            background-color: #313244;
+            border: 1px solid #414559;
+            border-radius: 8px;
+            color: #a6adc8;
+            font-size: 12px;
+            text-align: center;
+            min-width: 200px;
+            min-height: 200px;
+        """)
+        self.monster_image_placeholder.setAlignment(Qt.AlignCenter)
+        image_layout.addWidget(self.monster_image_placeholder)
+
+        # Location map placeholder (square)
+        self.location_map_placeholder = QLabel("[ LOCATION MAP PLACEHOLDER ]")
+        self.location_map_placeholder.setStyleSheet("""
+            background-color: #313244;
+            border: 1px solid #414559;
+            border-radius: 8px;
+            color: #a6adc8;
+            font-size: 12px;
+            text-align: center;
+            min-width: 150px;
+            min-height: 150px;
+        """)
+        self.location_map_placeholder.setAlignment(Qt.AlignCenter)
+        image_layout.addWidget(self.location_map_placeholder)
+
+        results_layout.addWidget(self.image_container, stretch=0)
+
+        main_layout.addWidget(self.results_container)
 
         main_layout.addStretch()  # Push cards and recent searches down slightly
 
-        # --- Dashboard feature cards ---
-        self._build_cards(main_layout)
 
-        # --- Recent searches section at the bottom ---
-        self.recent_searches = RecentSearches()
-        main_layout.addWidget(self.recent_searches)
 
     def _build_heading(self, parent_layout: QVBoxLayout):
         """Create the large heading and subtitle at the top of the dashboard."""
@@ -276,11 +309,12 @@ class Dashboard(QWidget):
     def _on_search_completed(self, query, monster_data):
         """Handle search completion and display results in GUI."""
         # Show the results area
-        self.results_display.show()
+        self.text_display.show()
+        self.image_container.show()
         
         # Format the monster data for display
         formatted_result = self._format_monster_data(query, monster_data)
-        self.results_display.setPlainText(formatted_result)
+        self.text_display.setPlainText(formatted_result)
         
     def _format_monster_data(self, query, monster_data):
         """Format monster data for display in GUI."""
@@ -382,32 +416,7 @@ class Dashboard(QWidget):
         """Show the monster search interface."""
         # Make the search bar and results display visible
         self.search_bar.show()
-        self.results_display.show()
+        self.text_display.show()
+        self.image_container.show()
 
-    def _build_cards(self, parent_layout: QVBoxLayout):
-        """Create the grid of feature cards."""
-        # Horizontal layout to hold two rows of cards side by side
-        cards_container = QWidget()
-        cards_layout = QVBoxLayout(cards_container)
-        cards_layout.setContentsMargins(0, 0, 0, 0)
-        cards_layout.setSpacing(12)
 
-        # Split cards into pairs for a 2-column layout
-        row_size = 2
-        for i in range(0, len(self._CARDS), row_size):
-            row_widget = QWidget()
-            row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(12)
-
-            for j in range(row_size):
-                idx = i + j
-                if idx < len(self._CARDS):
-                    title, desc, icon = self._CARDS[idx]
-                    card = DashboardCard(title, desc, icon)
-                    card.setFixedHeight(90)
-                    row_layout.addWidget(card, stretch=1)
-
-            cards_layout.addWidget(row_widget)
-
-        parent_layout.addWidget(cards_container)
