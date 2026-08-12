@@ -9,6 +9,8 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import sys
+from .test_drops import get_parsed_drops
 
 def fetch_raw_wikitext(page_title):
     """Fetch raw wikitext for a specific page."""
@@ -131,14 +133,17 @@ def extract_loc_lines(wikitext):
     return loc_lines
 
 def main():
-    """Main function to parse Abyssal demon data."""
-    print("Parsing Abyssal demon page from OSRS Wiki...")
+    """Main function to parse monster data."""
+    # Get monster name from command line or default to "Abyssal demon"
+    monster_name = sys.argv[1] if len(sys.argv) > 1 else "Abyssal demon"
     
-    # Fetch raw wikitext for Abyssal demon
-    wikitext = fetch_raw_wikitext("Abyssal demon")
+    print(f"Parsing {monster_name} page from OSRS Wiki...")
+    
+    # Fetch raw wikitext for the specified monster
+    wikitext = fetch_raw_wikitext(monster_name)
     
     if not wikitext:
-        print("Failed to fetch wikitext for Abyssal demon")
+        print(f"Failed to fetch wikitext for {monster_name}")
         return
     
     print(f"Retrieved wikitext of {len(wikitext)} characters")
@@ -148,6 +153,9 @@ def main():
     
     # Extract location lines
     locations = extract_loc_lines(wikitext)
+    
+    # Get parsed drops
+    drops = get_parsed_drops(wikitext)
     
     # Print the parsed monster data as readable JSON
     print("\nParsed Monster Data:")
@@ -160,6 +168,15 @@ def main():
     
     if len(locations) > 20:
         print("  ... and {} more locations".format(len(locations) - 20))
+    
+    # Print drops
+    print(f"\nDrops ({len(drops)} total):")
+    for drop in drops:
+        category = drop['category'].replace(' (Post-quest)', '')
+        print(f"  {drop['name']} ({drop['quantity']}) - {drop['rarity']} in {category}")
+    
+    # Add drops to monster data
+    monster_data["drops"] = drops
     
     # Print summary
     print(f"\nSummary:")
