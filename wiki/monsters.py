@@ -1,144 +1,158 @@
+#!/usr/bin/env python3
+"""
+OSRS Wiki Monsters Parser for Abyssal demon page.
+This script retrieves raw wikitext for the Abyssal demon page and parses
+the Infobox Monster template and LocLine templates to extract structured data.
+"""
+
 import urllib.request
 import urllib.parse
 import json
+import re
 
-# API endpoint
-url = "https://oldschool.runescape.wiki/api.php"
-
-# Query parameters
-params = {
-    'action': 'query',
-    'format': 'json',
-    'list': 'categorymembers',
-    'cmtitle': 'Category:Monsters',
-    'cmlimit': 500  # Reasonable limit for each request
-}
-
-# Track all page titles
-all_titles = []
-
-# Continue making requests until no more pages
-continue_token = None
-
-while True:
-    # Add continuation token if we have one
-    if continue_token:
-        params['cmcontinue'] = continue_token
-    
-    # Encode parameters
-    query_string = urllib.parse.urlencode(params)
-    full_url = url + "?" + query_string
-    
-    # Make the request with a User-Agent
-    request = urllib.request.Request(full_url)
-    request.add_header('User-Agent', 'OSRS-Monster-Scraper/1.0')
-    
-    try:
-        # Send request and read response
-        with urllib.request.urlopen(request) as response:
-            data = response.read()
-        
-        # Parse JSON
-        json_data = json.loads(data.decode('utf-8'))
-        
-        # Extract category members
-        category_members = json_data['query']['categorymembers']
-        
-        # Add titles to our collection
-        for member in category_members:
-            all_titles.append(member['title'])
-        
-        # Check if there are more pages
-        continue_token = json_data.get('continue', {}).get('cmcontinue')
-        if not continue_token:
-            break
-            
-    except Exception as e:
-        print(f"Error: {e}")
-        break
-
-# Filter out titles that begin with "Category:"
-original_count = len(all_titles)
-filtered_titles = [title for title in all_titles if not title.startswith("Category:")]
-
-
-# Now check metadata for the filtered titles
-print("Checking page metadata for filtered titles...")
-print(f"Total candidates: {len(filtered_titles)}")
-
-# Batch processing to avoid URI too long errors
-batch_size = 50
-total_pages = 0
-missing_pages = 0
-namespace_0_pages = 0
-non_namespace_0_pages = 0
-namespace_0_titles = []
-
-# Process in batches
-for i in range(0, len(filtered_titles), batch_size):
-    batch = filtered_titles[i:i + batch_size]
-    
-    # Prepare parameters for checking page metadata
-    metadata_params = {
+def fetch_raw_wikitext(page_title):
+    """Fetch raw wikitext for a specific page."""
+    url = "https://oldschool.runescape.wiki/api.php"
+    params = {
         'action': 'query',
         'format': 'json',
-        'titles': '|'.join(batch),
-        'prop': 'info',
-        'inprop': 'namespace|missing'
+        'titles': page_title,
+        'prop': 'revisions',
+        'rvprop': 'content'
     }
     
-    # Encode parameters
-    metadata_query_string = urllib.parse.urlencode(metadata_params)
-    metadata_full_url = url + "?" + metadata_query_string
+    # Build the full URL with query parameters
+    query_string = urllib.parse.urlencode(params)
+    full_url = f"{url}?{query_string}"
     
-    # Make the request with a User-Agent
-    metadata_request = urllib.request.Request(metadata_full_url)
-    metadata_request.add_header('User-Agent', 'OSRS-Monster-Scraper/1.0')
+    # Create request with User-Agent header
+    req = urllib.request.Request(full_url)
+    req.add_header('User-Agent', 'OSRS-Monster-Parser/1.0')
     
     try:
-        # Send request and read response
-        with urllib.request.urlopen(metadata_request) as response:
-            data = response.read()
+        response = urllib.request.urlopen(req)
+        data = response.read().decode('utf-8')
+        parsed_data = json.loads(data)
         
-        # Parse JSON
-        metadata_json_data = json.loads(data.decode('utf-8'))
-        
-        # Extract pages information
-        pages = metadata_json_data['query']['pages']
-        
-        # Process each page in this batch
-        for page_id, page_info in pages.items():
-            if page_id == '-1':
-                # This means the page was not found
-                missing_pages += 1
-            else:
-                # Page exists
-                if 'missing' in page_info:
-                    missing_pages += 1
-                else:
-                    # Page exists, check namespace
-                    namespace = page_info.get('ns', -1)
-                    if namespace == 0:
-                        namespace_0_pages += 1
-                        if len(namespace_0_titles) < 20:
-                            namespace_0_titles.append(page_info['title'])
-                    else:
-                        non_namespace_0_pages += 1
-        
-        total_pages += len(pages)
-        
+        # Extract the wikitext
+        pages = parsed_data['query']['pages']
+        page_id = list(pages.keys())[0]
+        if page_id != '-1':
+            revisions = pages[page_id].get('revisions', [{}])
+            if revisions:
+                return revisions[0]['*']
     except Exception as e:
-        print(f"Error processing batch {i//batch_size + 1}: {e}")
-        break
-
-# Print summary
-print(f"Pages found: {total_pages - missing_pages}")
-print(f"Pages missing: {missing_pages}")
-print(f"Pages in namespace 0: {namespace_0_pages}")
-print(f"Pages not in namespace 0: {non_namespace_0_pages}")
-
-print("\nFirst 20 namespace 0 titles:")
-for i, title in enumerate(namespace_0_titles, 1):
-    print(f"{i:2d}. {title}")
+        print(f"Error fetching wikitext: {e}")
     
-print("\nAPI TEST SUCCESS")
+    return None
+
+def extract_infobox_monster(wikitext):
+    """Extract data from the Infobox Monster template."""
+    # Pattern to match the Infobox Monster template
+    infobox_pattern = r'\{\{Infobox Monster\s*(.*?)\}\}'
+    match = re.search(infobox_pattern, wikitext, re.DOTALL | re.IGNORECASE)
+    
+    if not match:
+        print("No Infobox Monster template found")
+        return {}
+    
+    # Extract content inside the template
+    content = match.group(1)
+    
+    # Parse key-value pairs more robustly - handling pipe syntax
+    monster_data = {}
+    
+    # Split by newlines and process each line
+    lines = content.strip().split('\n')
+    for line in lines:
+        line = line.strip()
+        if line.startswith('|') and '=' in line:
+            # Split on first '=' to separate key and value
+            parts = line.split('=', 1)
+            if len(parts) == 2:
+                key = parts[0].strip()[1:]  # Remove the leading '|'
+                value = parts[1].strip()
+                
+                # Clean up the value
+                clean_value = value
+                
+                # Remove wiki link syntax like [[File:Abyssal demon.png]] or [[Some Page]]
+                clean_value = re.sub(r'\[\[(?:[^\]|]*\|)?([^\]]*)\]\]', r'\1', clean_value)
+                
+                # Remove any remaining brackets
+                clean_value = re.sub(r'[\[\]]', '', clean_value)
+                
+                if key and clean_value:
+                    monster_data[key.lower()] = clean_value
+    
+    return monster_data
+
+def extract_loc_lines(wikitext):
+    """Extract location names from LocLine templates."""
+    loc_lines = []
+    
+    # Pattern to match LocLine templates
+    pattern = r'\{\{LocLine\s*(.*?)\}\}'
+    matches = re.findall(pattern, wikitext, re.DOTALL | re.IGNORECASE)
+    
+    for match in matches:
+        # Parse key-value pairs in the LocLine template
+        lines = match.strip().split('|')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('location ='):
+                # Extract the value after 'location ='
+                location = line.split('=', 1)[1].strip()
+                # Remove wiki link syntax [[...]]
+                location = re.sub(r'\[\[(?:[^\]|]*\|)?([^\]]*)\]\]', r'\1', location)
+                # Remove wiki template syntax like {{Fairycode}}
+                location = re.sub(r'\{\{[^}]*\}\}', '', location)
+                # Clean up trailing parentheses and any leftover template-like content
+                location = re.sub(r'\s*\([^)]*\)$', '', location)
+                # Remove any remaining brackets or artifacts
+                location = re.sub(r'[\[\]]', '', location)
+                # Strip leading/trailing whitespace
+                location = location.strip()
+                if location:  # Only add non-empty locations
+                    loc_lines.append(location)
+    
+    return loc_lines
+
+def main():
+    """Main function to parse Abyssal demon data."""
+    print("Parsing Abyssal demon page from OSRS Wiki...")
+    
+    # Fetch raw wikitext for Abyssal demon
+    wikitext = fetch_raw_wikitext("Abyssal demon")
+    
+    if not wikitext:
+        print("Failed to fetch wikitext for Abyssal demon")
+        return
+    
+    print(f"Retrieved wikitext of {len(wikitext)} characters")
+    
+    # Extract infobox monster data
+    monster_data = extract_infobox_monster(wikitext)
+    
+    # Extract location lines
+    locations = extract_loc_lines(wikitext)
+    
+    # Print the parsed monster data as readable JSON
+    print("\nParsed Monster Data:")
+    print(json.dumps(monster_data, indent=2))
+    
+    # Print locations
+    print(f"\nLocations ({len(locations)} total):")
+    for i, location in enumerate(locations[:20]):
+        print(f"  {i+1}. {location}")
+    
+    if len(locations) > 20:
+        print("  ... and {} more locations".format(len(locations) - 20))
+    
+    # Print summary
+    print(f"\nSummary:")
+    print(f"  Total fields extracted: {len(monster_data)}")
+    print(f"  Total locations found: {len(locations)}")
+
+if __name__ == "__main__":
+    main()
