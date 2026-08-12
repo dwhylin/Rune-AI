@@ -57,16 +57,23 @@ while True:
         print(f"Error: {e}")
         break
 
-# Print results
-print(f"Number of pages retrieved: {len(all_titles)}")
+# Filter out titles that begin with "Category:"
+original_count = len(all_titles)
+filtered_titles = [title for title in all_titles if not title.startswith("Category:")]
 
-print("\nFirst 20 page titles:")
-for i, title in enumerate(all_titles[:20]):
+
+# Print results
+print(f"Total category members retrieved: {original_count}")
+print(f"Number of Category: pages removed: {original_count - len(filtered_titles)}")
+print(f"Number of remaining page titles: {len(filtered_titles)}")
+
+print("\nFirst 20 remaining titles:")
+for i, title in enumerate(filtered_titles[:20]):
     print(f"{i+1:2d}. {title}")
 
-print("\nLast 20 page titles:")
-start_index = max(0, len(all_titles) - 20)
-for i, title in enumerate(all_titles[start_index:], start_index + 1):
+print("\nLast 20 remaining titles:")
+start_index = max(0, len(filtered_titles) - 20)
+for i, title in enumerate(filtered_titles[start_index:], start_index + 1):
     print(f"{i:2d}. {title}")
 
 print("\nAPI TEST SUCCESS")
