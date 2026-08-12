@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFrame,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 
 
 class Sidebar(QFrame):
@@ -30,6 +30,9 @@ class Sidebar(QFrame):
         ("🗺️", "Travel"),
         ("📖", "Wiki"),
     ]
+
+    # Signal to emit when a page is selected
+    page_selected = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -112,6 +115,9 @@ class Sidebar(QFrame):
         self._selected_page = page_name
         for label, btn in self._buttons.items():
             btn.setChecked(label == page_name)
+        
+        # Emit signal when a page is selected
+        self.page_selected.emit(page_name)
 
     @property
     def selected_page(self):

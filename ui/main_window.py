@@ -45,6 +45,19 @@ class MainWindow(QMainWindow):
         self.dashboard = Dashboard()
         main_layout.addWidget(self.dashboard, stretch=1)
 
+        # Connect sidebar signal to handle page changes
+        self.sidebar.page_selected.connect(self._on_sidebar_page_selected)
+
         # Status bar at the bottom of the window
         self.setStatusBar(QStatusBar(self))
         self.statusBar().showMessage("Ready — Rune AI v0.1")
+
+    def _on_sidebar_page_selected(self, page_name: str):
+        """Handle sidebar page selection."""
+        # For now, only handle Monsters page - others can be implemented later
+        if page_name == "Monsters":
+            # This will show the monsters search functionality
+            self.dashboard.show_monsters_view()
+        else:
+            # For other pages, we could implement different views
+            pass

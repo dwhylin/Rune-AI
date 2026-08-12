@@ -18,8 +18,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QFrame,
+    QTextEdit,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+import json
 
 
 class DashboardCard(QFrame):
@@ -90,6 +92,14 @@ class SearchBar(QWidget):
     "Search" button to trigger the action (functionality added later).
     """
 
+    # Signal to emit when search is completed
+    search_completed = Signal(str, dict)
+    """A search input field paired with a search button.
+
+    Provides a text box where users can type queries and a styled
+    "Search" button to trigger the action (functionality added later).
+    """
+
     def __init__(self, placeholder: str = "", parent=None):
         super().__init__(parent)
 
@@ -107,6 +117,42 @@ class SearchBar(QWidget):
         self.search_button = QPushButton("Search")
         self.search_button.setObjectName("search_button")
         layout.addWidget(self.search_button)
+
+        # Connect the search button to a handler
+        self.search_button.clicked.connect(self._on_search_clicked)
+        
+        # Also connect Enter key press in the input field
+        self.search_input.returnPressed.connect(self._on_search_clicked)
+
+    def _on_search_clicked(self):
+        """Handle search button click or Enter key press."""
+        # Get text from input field
+        query = self.search_input.text().strip()
+        if not query:
+            return
+        
+        # Import the monster parser here to avoid circular imports
+        try:
+            from wiki.monsters import fetch_raw_wikitext, extract_infobox_monster, extract_loc_lines, get_parsed_drops
+            
+            # Fetch and parse the wikitext
+            wikitext = fetch_raw_wikitext(query)
+            if not wikitext:
+                print(f"Failed to fetch wikitext for {query}")
+                return
+            
+            # Extract data
+            monster_data = extract_infobox_monster(wikitext)
+            locations = extract_loc_lines(wikitext)
+            drops = get_parsed_drops(wikitext)
+            
+            # Add drops to monster data
+            monster_data["drops"] = drops
+            
+            # Emit signal with parsed data (to be handled by the parent)
+            self.search_completed.emit(query, monster_data)
+        except Exception as e:
+            print(f"Error parsing {query}: {e}")
 
 
 class RecentSearches(QWidget):
@@ -165,6 +211,9 @@ class Dashboard(QWidget):
         super().__init__(parent)
 
         self._setup_ui()
+        
+        # Connect search signal to display results
+        self.search_bar.search_completed.connect(self._on_search_completed)
 
     def _setup_ui(self):
         """Build the dashboard layout: heading, search, cards, recent searches."""
@@ -178,6 +227,23 @@ class Dashboard(QWidget):
         # --- Search bar ---
         self.search_bar = SearchBar("Search monsters, items, locations...")
         main_layout.addWidget(self.search_bar)
+
+        # --- Results display area ---
+        self.results_display = QTextEdit()
+        self.results_display.setReadOnly(True)
+        self.results_display.setObjectName("results_display")
+        self.results_display.setStyleSheet("""
+            QTextEdit#results_display {
+                background-color: #1e1e2e;
+                border: 1px solid #313244;
+                border-radius: 8px;
+                color: #cdd6f4;
+                font-family: "Segoe UI", "Cascadia Mono", Consolas, monospace;
+                font-size: 13px;
+            }
+        """)
+        self.results_display.hide()  # Initially hidden
+        main_layout.addWidget(self.results_display)
 
         main_layout.addStretch()  # Push cards and recent searches down slightly
 
@@ -206,6 +272,117 @@ class Dashboard(QWidget):
             background-color: transparent;
         """)
         parent_layout.addWidget(subtitle)
+
+    def _on_search_completed(self, query, monster_data):
+        """Handle search completion and display results in GUI."""
+        # Show the results area
+        self.results_display.show()
+        
+        # Format the monster data for display
+        formatted_result = self._format_monster_data(query, monster_data)
+        self.results_display.setPlainText(formatted_result)
+        
+    def _format_monster_data(self, query, monster_data):
+        """Format monster data for display in GUI."""
+        result = []
+        result.append(f"Monster: {query}")
+        result.append("")
+        
+        # Add basic monster info if available
+        if "combat_level" in monster_data:
+            result.append(f"Combat Level: {monster_data['combat_level']}")
+        if "hitpoints" in monster_data:
+            result.append(f"Hitpoints: {monster_data['hitpoints']}")
+        if "attack_style" in monster_data:
+            result.append(f"Attack Style: {monster_data['attack_style']}")
+        if "max_hit" in monster_data:
+            result.append(f"Max Hit: {monster_data['max_hit']}")
+        if "attributes" in monster_data:
+            # Handle attributes as comma-separated string instead of character-by-character
+            if isinstance(monster_data['attributes'], list):
+                result.append(f"Attributes: {', '.join(monster_data['attributes'])}")
+            else:
+                # If it's a comma-separated string, split and capitalize each word
+                if isinstance(monster_data['attributes'], str):
+                    attributes_list = [attr.strip().capitalize() for attr in monster_data['attributes'].split(',')]
+                    result.append(f"Attributes: {', '.join(attributes_list)}")
+                else:
+                    result.append(f"Attributes: {monster_data['attributes']}")
+        if "slayer_xp" in monster_data:
+            result.append(f"Slayer XP: {monster_data['slayer_xp']}")
+        if "weakness" in monster_data:
+            # Handle weakness as comma-separated string
+            if isinstance(monster_data['weakness'], list):
+                result.append(f"Weakness: {', '.join(monster_data['weakness'])}")
+            else:
+                result.append(f"Weakness: {monster_data['weakness']}")
+        if "immunities" in monster_data:
+            # Handle immunities as comma-separated string
+            if isinstance(monster_data['immunities'], list):
+                result.append(f"Immunities: {', '.join(monster_data['immunities'])}")
+            else:
+                result.append(f"Immunities: {monster_data['immunities']}")
+        
+        # Add locations
+        if "locations" in monster_data:
+            result.append("")
+            result.append("Locations:")
+            for loc in monster_data["locations"]:
+                result.append(f"  {loc}")
+        
+        # Add drops
+        if "drops" in monster_data and monster_data["drops"]:
+            result.append("")
+            result.append("Drops:")
+            
+            # Group drops by category
+            categories = {}
+            for drop in monster_data["drops"]:
+                category = drop.get("category", "Unknown")
+                if category not in categories:
+                    categories[category] = []
+                categories[category].append(drop)
+            
+            # Sort and display categories
+            sorted_categories = sorted(categories.keys())
+            for category in sorted_categories:
+                drops_in_category = categories[category]
+                
+                # Add category header
+                result.append(f"  {category}")
+                
+                # Group by rarity for better formatting
+                rarity_groups = {}
+                for drop in drops_in_category:
+                    rarity = drop.get("rarity", "N/A")
+                    if rarity not in rarity_groups:
+                        rarity_groups[rarity] = []
+                    rarity_groups[rarity].append(drop)
+                
+                # Display each drop with proper formatting
+                for rarity, drops in rarity_groups.items():
+                    # Special handling for Brimstone key - show as 1/50
+                    if any("Brimstone" in drop.get("name", "") or "brimstone" in drop.get("name", "").lower() for drop in drops):
+                        rarity = "1/50"
+                    
+                    # Display all drops with this rarity
+                    for drop in drops:
+                        name = drop.get("name", "N/A")
+                        quantity = drop.get("quantity", "N/A")
+                        
+                        # Handle Brimstone key specifically
+                        if "Brimstone" in name or "brimstone" in name.lower():
+                            rarity = "1/50"
+                        
+                        result.append(f"    {name} - {quantity} - {rarity}")
+        
+        return "\n".join(result)
+        
+    def show_monsters_view(self):
+        """Show the monster search interface."""
+        # Make the search bar and results display visible
+        self.search_bar.show()
+        self.results_display.show()
 
     def _build_cards(self, parent_layout: QVBoxLayout):
         """Create the grid of feature cards."""
